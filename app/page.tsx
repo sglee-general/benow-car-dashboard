@@ -17,10 +17,27 @@ const carOptions = [
   { id: "ray", name: "레이" }
 ] as const;
 
-const agreementText =
-  "본인은 도로교통법을 준수하며 안전한 운행을 하겠습니다. 본인은 차량의 문제 발견 또는 사고 발생 시 해당 차량이 가입된 보험회사에 해당 내용을 접수하고, 필요 시 사고 경위서를 작성하겠습니다. 본인은 음주 운전, 운전 중 흡연, 신청된 목적 이외 운행하는 행위를 하지 않겠습니다. 이를 어길 시 공용 법인차량 예약이 불가함을 확인합니다.";
+const agreementItems = [
+  {
+    id: "trafficLaw",
+    text: "본인은 도로교통법을 준수하며 안전한 운행을 하겠습니다."
+  },
+  {
+    id: "accidentReport",
+    text: "본인은 차량의 문제 발견 또는 사고 발생 시 해당 차량이 가입된 보험회사에 해당 내용을 접수하고, 필요 시 사고 경위서를 작성하겠습니다."
+  },
+  {
+    id: "prohibitedUse",
+    text: "본인은 음주 운전, 운전 중 흡연, 신청된 목적 이외 운행하는 행위를 하지 않겠습니다."
+  },
+  {
+    id: "reservationRestriction",
+    text: "이를 어길 시 공용 법인차량 예약이 불가함을 확인합니다."
+  }
+] as const;
 
 type Filter = (typeof carFilters)[number]["id"];
+type AgreementId = (typeof agreementItems)[number]["id"];
 type FormState = {
   carId: CarId;
   bookerName: string;
@@ -30,8 +47,10 @@ type FormState = {
   startTime: string;
   endDate: string;
   endTime: string;
-  agreement: boolean;
+  agreements: Record<AgreementId, boolean>;
 };
+
+const emptyAgreements = Object.fromEntries(agreementItems.map((item) => [item.id, false])) as Record<AgreementId, boolean>;
 
 function formatYmd(date: Date) {
   const year = date.getFullYear();
@@ -64,7 +83,7 @@ export default function Home() {
     startTime: "10:00",
     endDate: "",
     endTime: "18:00",
-    agreement: false
+    agreements: emptyAgreements
   });
 
   const slackUserId = useMemo(() => {
@@ -74,6 +93,7 @@ export default function Home() {
 
   const holidayMap = useMemo(() => new Map(holidays.map((holiday) => [holiday.date, holiday.name])), [holidays]);
   const holidayDates = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
+  const allAgreementsChecked = agreementItems.every((item) => form.agreements[item.id]);
 
   async function loadReservations(targetMonth = month) {
     const years = yearsForMonth(targetMonth).join(",");
@@ -147,7 +167,7 @@ export default function Home() {
       carId: availableCar,
       startDate: ymd,
       endDate: ymd,
-      agreement: false
+      agreements: emptyAgreements
     }));
   }
 
@@ -312,20 +332,32 @@ export default function Home() {
               </label>
             </div>
 
-            <label className="agreement">
-              <input
-                type="checkbox"
-                checked={form.agreement}
-                onChange={(event) => setForm({ ...form, agreement: event.target.checked })}
-              />
-              <span>{agreementText}</span>
-            </label>
+            <div className="agreement-list" aria-label="안전 운행 및 이용 규정 확인">
+              {agreementItems.map((item) => (
+                <label className="agreement" key={item.id}>
+                  <input
+                    type="checkbox"
+                    checked={form.agreements[item.id]}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        agreements: {
+                          ...form.agreements,
+                          [item.id]: event.target.checked
+                        }
+                      })
+                    }
+                  />
+                  <span>{item.text}</span>
+                </label>
+              ))}
+            </div>
 
             <footer>
               <button type="button" className="secondary" onClick={() => setSelectedDate(null)}>
                 <X size={17} /> 취소
               </button>
-              <button type="submit" className="primary" disabled={submitting}>
+              <button type="submit" className="primary" disabled={submitting || !allAgreementsChecked}>
                 <Check size={17} /> {submitting ? "처리 중" : "확인"}
               </button>
             </footer>

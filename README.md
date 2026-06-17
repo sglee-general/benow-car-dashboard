@@ -41,9 +41,16 @@ SLACK_BOT_TOKEN
 KV_REST_API_URL
 KV_REST_API_TOKEN
 KOREA_HOLIDAY_API_KEY
+COMPANY_CAR_HOLIDAYS
 ```
 
 `KV_REST_API_URL`, `KV_REST_API_TOKEN` 대신 `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`도 사용할 수 있습니다. Redis 환경변수가 없으면 로컬 개발용 메모리 저장소로 동작합니다.
+
+공공데이터 API 키가 아직 없거나 별도 회사 휴무일을 추가해야 하면 `COMPANY_CAR_HOLIDAYS`에 아래처럼 넣으면 캘린더와 예약 제한에 함께 반영됩니다.
+
+```text
+COMPANY_CAR_HOLIDAYS=2026-05-05:어린이날,2026-08-17:대체공휴일
+```
 
 ## 실행
 

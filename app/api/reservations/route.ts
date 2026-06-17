@@ -10,6 +10,12 @@ function clean(value: unknown) {
   return String(value || "").trim();
 }
 
+function hasRequiredAgreements(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const agreements = value as Record<string, unknown>;
+  return ["trafficLaw", "accidentReport", "prohibitedUse", "reservationRestriction"].every((key) => agreements[key] === true);
+}
+
 function parseYears(searchParams: URLSearchParams) {
   const requested = searchParams.getAll("year").flatMap((value) => value.split(","));
   const years = requested.map(Number).filter((year) => Number.isInteger(year) && year >= 2020 && year <= 2100);
@@ -47,8 +53,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "필수 정보를 모두 입력해 주세요." }, { status: 400 });
     }
 
-    if (!body.agreement) {
-      return NextResponse.json({ error: "안전 운행 및 이용 규정 확인이 필요합니다." }, { status: 400 });
+    if (!hasRequiredAgreements(body.agreements)) {
+      return NextResponse.json({ error: "안전 운행 및 이용 규정을 모두 확인해 주세요." }, { status: 400 });
     }
 
     const dates = datesBetween(startDate, endDate);
