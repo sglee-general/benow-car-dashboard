@@ -19,6 +19,8 @@ export type Reservation = {
   endDate: string;
   endTime: string;
   slackUserId?: string;
+  createdByEmail?: string;
+  createdByName?: string;
   createdAt: string;
 };
 
@@ -127,6 +129,22 @@ export async function getReservations() {
   }
 
   return [...getMemoryReservations().values()].sort(compareReservations);
+}
+
+export async function getReservationById(id: string) {
+  const value = await redisCommand<string | null>(["GET", reservationKey(id)]);
+  if (value) return JSON.parse(value) as Reservation;
+  if (value === null) return null;
+  return getMemoryReservations().get(id) || null;
+}
+
+export async function deleteReservation(id: string) {
+  const config = redisConfig();
+  if (!config) return getMemoryReservations().delete(id);
+
+  await redisCommand(["DEL", reservationKey(id)]);
+  await redisCommand(["SREM", listKey, id]);
+  return true;
 }
 
 export async function createReservation(input: Omit<Reservation, "id" | "createdAt" | "carName">) {

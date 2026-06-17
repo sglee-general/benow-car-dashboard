@@ -53,6 +53,36 @@ main {
   border-radius: 8px 8px 0 0;
 }
 
+.login-panel,
+.my-reservations {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.login-panel {
+  display: grid;
+  min-height: 320px;
+  place-content: center;
+  gap: 18px;
+  padding: 36px;
+  text-align: center;
+}
+
+.login-button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--green);
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: var(--green);
@@ -75,7 +105,8 @@ h2 {
 }
 
 .month-control,
-.filters {
+.filters,
+.user-menu {
   display: flex;
   align-items: center;
 }
@@ -84,9 +115,18 @@ h2 {
   gap: 10px;
 }
 
+.user-menu {
+  gap: 10px;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .month-control button,
 .icon-button,
-.toast button {
+.toast button,
+.user-menu button {
   width: 36px;
   height: 36px;
   display: inline-flex;
@@ -96,6 +136,12 @@ h2 {
   border-radius: 8px;
   background: #fff;
   cursor: pointer;
+}
+
+.user-menu button {
+  width: auto;
+  padding: 0 12px;
+  gap: 6px;
 }
 
 .filters {
@@ -136,6 +182,55 @@ h2 {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   border-radius: 0 0 8px 8px;
   overflow: hidden;
+}
+
+.my-reservations {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 20px;
+}
+
+.reservation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.reservation-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.reservation-item span,
+.empty-text {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.danger {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid rgba(194, 65, 50, 0.28);
+  border-radius: 8px;
+  color: var(--red);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .weekday {

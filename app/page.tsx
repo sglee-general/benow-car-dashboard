@@ -1,10 +1,10 @@
 "use client";
 
-import { CalendarDays, Car, Check, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { CalendarDays, Car, Check, ChevronLeft, ChevronRight, LogIn, LogOut, Trash2, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canReserveDate, datesBetween, isRestrictedBookingDate, isWeekendYmd } from "@/lib/dates";
-import type { CarId, Reservation } from "@/lib/reservations";
 import type { Holiday } from "@/lib/holidays";
+import type { CarId, Reservation } from "@/lib/reservations";
 
 const carFilters = [
   { id: "all", name: "전체" },
@@ -18,26 +18,18 @@ const carOptions = [
 ] as const;
 
 const agreementItems = [
-  {
-    id: "trafficLaw",
-    text: "본인은 도로교통법을 준수하며 안전한 운행을 하겠습니다."
-  },
+  { id: "trafficLaw", text: "본인은 도로교통법을 준수하며 안전한 운행을 하겠습니다." },
   {
     id: "accidentReport",
     text: "본인은 차량의 문제 발견 또는 사고 발생 시 해당 차량이 가입된 보험회사에 해당 내용을 접수하고, 필요 시 사고 경위서를 작성하겠습니다."
   },
-  {
-    id: "prohibitedUse",
-    text: "본인은 음주 운전, 운전 중 흡연, 신청된 목적 이외 운행하는 행위를 하지 않겠습니다."
-  },
-  {
-    id: "reservationRestriction",
-    text: "이를 어길 시 공용 법인차량 예약이 불가함을 확인합니다."
-  }
+  { id: "prohibitedUse", text: "본인은 음주 운전, 운전 중 흡연, 신청된 목적 이외 운행하는 행위를 하지 않겠습니다." },
+  { id: "reservationRestriction", text: "이를 어길 시 공용 법인차량 예약이 불가함을 확인합니다." }
 ] as const;
 
 type Filter = (typeof carFilters)[number]["id"];
 type AgreementId = (typeof agreementItems)[number]["id"];
+type User = { email: string; name: string; picture?: string };
 type FormState = {
   carId: CarId;
   bookerName: string;
@@ -69,13 +61,20 @@ function formatReservationTime(reservation: Reservation, ymd: string) {
   return `${start}~${end}`;
 }
 
+function formatPeriod(reservation: Reservation) {
+  return `${reservation.startDate} ${reservation.startTime} ~ ${reservation.endDate} ${reservation.endTime}`;
+}
+
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [month, setMonth] = useState(() => {
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth(), 1);
   });
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [myReservations, setMyReservations] = useState<Reservation[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -101,17 +100,41 @@ export default function Home() {
   const holidayDates = useMemo(() => new Set(holidays.map((holiday) => holiday.date)), [holidays]);
   const allAgreementsChecked = agreementItems.every((item) => form.agreements[item.id]);
 
+  async function loadUser() {
+    const response = await fetch("/api/auth/me", { cache: "no-store" });
+    const data = await response.json();
+    setUser(data.user || null);
+    setAuthLoaded(true);
+  }
+
   async function loadReservations(targetMonth = month) {
     const years = yearsForMonth(targetMonth).join(",");
     const response = await fetch(`/api/reservations?year=${years}`, { cache: "no-store" });
+    if (response.status === 401) {
+      setUser(null);
+      return;
+    }
     const data = await response.json();
     setReservations(data.reservations || []);
     setHolidays(data.holidays || []);
   }
 
+  async function loadMyReservations() {
+    const response = await fetch("/api/reservations/me", { cache: "no-store" });
+    if (response.status === 401) return;
+    const data = await response.json();
+    setMyReservations(data.reservations || []);
+  }
+
   useEffect(() => {
+    loadUser().catch(() => setAuthLoaded(true));
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
     loadReservations(month).catch(() => setToast("예약 현황을 불러오지 못했습니다."));
-  }, [month]);
+    loadMyReservations().catch(() => setToast("내 예약 내역을 불러오지 못했습니다."));
+  }, [user, month]);
 
   const reservationDates = useMemo(() => {
     const map = new Map<string, Reservation[]>();
@@ -142,6 +165,10 @@ export default function Home() {
   }
 
   function openDate(ymd: string) {
+    if (!user) {
+      setToast("로그인이 필요합니다.");
+      return;
+    }
     if (!canReserveDate(ymd, new Date(), holidayDates)) {
       setToast("예약이 가능한 시간이 아닙니다.");
       return;
@@ -152,6 +179,7 @@ export default function Home() {
     setForm((current) => ({
       ...current,
       carId: defaultCar,
+      bookerName: user.name,
       startDate: ymd,
       endDate: ymd,
       agreements: emptyAgreements
@@ -178,7 +206,50 @@ export default function Home() {
 
     setSelectedDate(null);
     setToast("예약이 완료되었습니다.");
-    await loadReservations();
+    await Promise.all([loadReservations(), loadMyReservations()]);
+  }
+
+  async function cancelReservation(id: string) {
+    const response = await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) {
+      setToast(data.error || "예약 취소 중 오류가 발생했습니다.");
+      return;
+    }
+
+    setToast("예약이 취소되었습니다.");
+    await Promise.all([loadReservations(), loadMyReservations()]);
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    setReservations([]);
+    setMyReservations([]);
+  }
+
+  if (!authLoaded) {
+    return (
+      <main>
+        <section className="login-panel">
+          <h1>비나우 공용 법인차량 예약</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main>
+        <section className="login-panel">
+          <p className="eyebrow">Google Workspace 로그인</p>
+          <h1>비나우 공용 법인차량 예약</h1>
+          <a className="login-button" href="/api/auth/google">
+            <LogIn size={18} /> Google 계정으로 로그인
+          </a>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -187,6 +258,12 @@ export default function Home() {
         <div>
           <p className="eyebrow">전체 캘린더 현황</p>
           <h1>비나우 공용 법인차량 예약</h1>
+        </div>
+        <div className="user-menu">
+          <span>{user.name}</span>
+          <button onClick={logout} aria-label="로그아웃">
+            <LogOut size={17} /> 로그아웃
+          </button>
         </div>
         <div className="month-control" aria-label="월 이동">
           <button onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} aria-label="이전 달">
@@ -248,6 +325,30 @@ export default function Home() {
             </button>
           );
         })}
+      </section>
+
+      <section className="my-reservations" aria-label="내 예약 내역">
+        <div>
+          <p className="eyebrow">내 예약</p>
+          <h2>예약 내역</h2>
+        </div>
+        <div className="reservation-list">
+          {myReservations.length === 0 && <p className="empty-text">예약 내역이 없습니다.</p>}
+          {myReservations.map((reservation) => (
+            <article className="reservation-item" key={reservation.id}>
+              <div>
+                <strong>{reservation.carName}</strong>
+                <span>{formatPeriod(reservation)}</span>
+                <span>
+                  {reservation.bookerName} / {reservation.department}
+                </span>
+              </div>
+              <button type="button" className="danger" onClick={() => cancelReservation(reservation.id)}>
+                <Trash2 size={16} /> 취소
+              </button>
+            </article>
+          ))}
+        </div>
       </section>
 
       {toast && (

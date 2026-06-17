@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readSessionFromRequest } from "@/lib/auth";
 import { canReserveDate, datesBetween, todayKstYmd } from "@/lib/dates";
 import { getPublicHolidayDatesForRange, getPublicHolidaysForYears } from "@/lib/holidays";
 import { createReservation, getReservations, isCarId } from "@/lib/reservations";
@@ -23,6 +24,9 @@ function parseYears(searchParams: URLSearchParams) {
 }
 
 export async function GET(request: Request) {
+  const user = readSessionFromRequest(request);
+  if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
   const url = new URL(request.url);
   const [reservations, holidays] = await Promise.all([
     getReservations(),
@@ -34,6 +38,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const user = readSessionFromRequest(request);
+    if (!user) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
+
     const body = await request.json();
     const carId = clean(body.carId);
     const bookerName = clean(body.bookerName);
@@ -84,7 +91,9 @@ export async function POST(request: Request) {
       startTime,
       endDate,
       endTime,
-      slackUserId
+      slackUserId,
+      createdByEmail: user.email,
+      createdByName: user.name
     });
 
     await sendReservationCompleteMessage(reservation).catch((error) => {
