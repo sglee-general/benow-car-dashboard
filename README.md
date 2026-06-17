@@ -53,6 +53,14 @@ COMPANY_CAR_HOLIDAYS
 COMPANY_CAR_HOLIDAYS=2026-05-05:어린이날,2026-08-17:대체공휴일
 ```
 
+Vercel 환경변수는 대소문자를 구분합니다. 기본 권장 이름은 `COMPANY_CAR_HOLIDAYS`이지만, `company_car_holiday`, `company_car_holidays`, `COMPANY_CAR_HOLIDAY`도 함께 인식합니다.
+
+배포 후 공휴일이 읽히는지 아래 URL로 확인할 수 있습니다.
+
+```text
+https://your-vercel-domain.vercel.app/api/holidays?year=2026&month=8
+```
+
 ## 실행
 
 ```bash

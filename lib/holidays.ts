@@ -25,17 +25,32 @@ const memory = globalThis as typeof globalThis & {
   __companyCarHolidays?: Map<string, Holiday[]>;
 };
 
+function getEnvValue(names: string[]) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value?.trim()) return value.trim();
+  }
+  return "";
+}
+
 function formatApiDate(locdate: number) {
   const raw = String(locdate);
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
 function getApiKey() {
-  return process.env.KOREA_HOLIDAY_API_KEY || process.env.PUBLIC_DATA_API_KEY || "";
+  return getEnvValue([
+    "KOREA_HOLIDAY_API_KEY",
+    "PUBLIC_DATA_API_KEY",
+    "PUBLIC_DATA_SERVICE_KEY",
+    "DATA_GO_KR_API_KEY",
+    "korea_holiday_api_key",
+    "public_data_api_key"
+  ]);
 }
 
 function parseManualHolidays() {
-  const raw = process.env.COMPANY_CAR_HOLIDAYS || process.env.MANUAL_HOLIDAYS || "";
+  const raw = getManualHolidayEnvValue();
   if (!raw.trim()) return [];
 
   return raw
@@ -50,6 +65,19 @@ function parseManualHolidays() {
     .filter((item): item is Holiday => Boolean(item));
 }
 
+function getManualHolidayEnvValue() {
+  return getEnvValue([
+    "COMPANY_CAR_HOLIDAYS",
+    "COMPANY_CAR_HOLIDAY",
+    "MANUAL_HOLIDAYS",
+    "MANUAL_HOLIDAY",
+    "company_car_holidays",
+    "company_car_holiday",
+    "manual_holidays",
+    "manual_holiday"
+  ]);
+}
+
 function mergeHolidays(...groups: Holiday[][]) {
   const map = new Map<string, Holiday>();
   for (const holiday of groups.flat()) {
@@ -60,6 +88,7 @@ function mergeHolidays(...groups: Holiday[][]) {
 
 export async function getPublicHolidays(year: number, month: number): Promise<Holiday[]> {
   const apiKey = getApiKey();
+  const manualHolidayEnvValue = getManualHolidayEnvValue();
   const manualHolidays = parseManualHolidays().filter((holiday) => {
     const [holidayYear, holidayMonth] = holiday.date.split("-").map(Number);
     return holidayYear === year && holidayMonth === month;
@@ -67,7 +96,7 @@ export async function getPublicHolidays(year: number, month: number): Promise<Ho
   if (!apiKey) return manualHolidays;
 
   memory.__companyCarHolidays ??= new Map();
-  const cacheKey = `${year}-${String(month).padStart(2, "0")}`;
+  const cacheKey = `${year}-${String(month).padStart(2, "0")}:${apiKey.slice(0, 8)}:${manualHolidayEnvValue}`;
   const cached = memory.__companyCarHolidays.get(cacheKey);
   if (cached) return cached;
 
@@ -83,6 +112,13 @@ export async function getPublicHolidays(year: number, month: number): Promise<Ho
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     console.error("Holiday API request failed", response.status);
+    return manualHolidays;
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("json")) {
+    const body = await response.text();
+    console.error("Holiday API returned non-JSON response", body.slice(0, 300));
     return manualHolidays;
   }
 
