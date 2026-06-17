@@ -34,9 +34,37 @@ function getApiKey() {
   return process.env.KOREA_HOLIDAY_API_KEY || process.env.PUBLIC_DATA_API_KEY || "";
 }
 
+function parseManualHolidays() {
+  const raw = process.env.COMPANY_CAR_HOLIDAYS || process.env.MANUAL_HOLIDAYS || "";
+  if (!raw.trim()) return [];
+
+  return raw
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      const [date, name] = item.split(/[:=]/).map((value) => value.trim());
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) return null;
+      return { date, name: name || "공휴일" };
+    })
+    .filter((item): item is Holiday => Boolean(item));
+}
+
+function mergeHolidays(...groups: Holiday[][]) {
+  const map = new Map<string, Holiday>();
+  for (const holiday of groups.flat()) {
+    map.set(holiday.date, holiday);
+  }
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export async function getPublicHolidays(year: number, month: number): Promise<Holiday[]> {
   const apiKey = getApiKey();
-  if (!apiKey) return [];
+  const manualHolidays = parseManualHolidays().filter((holiday) => {
+    const [holidayYear, holidayMonth] = holiday.date.split("-").map(Number);
+    return holidayYear === year && holidayMonth === month;
+  });
+  if (!apiKey) return manualHolidays;
 
   memory.__companyCarHolidays ??= new Map();
   const cacheKey = `${year}-${String(month).padStart(2, "0")}`;
@@ -55,10 +83,17 @@ export async function getPublicHolidays(year: number, month: number): Promise<Ho
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     console.error("Holiday API request failed", response.status);
-    return [];
+    return manualHolidays;
   }
 
-  const data = (await response.json()) as HolidayApiResponse;
+  let data: HolidayApiResponse;
+  try {
+    data = (await response.json()) as HolidayApiResponse;
+  } catch (error) {
+    console.error("Holiday API response parse failed", error);
+    return manualHolidays;
+  }
+
   const rawItems = data.response?.body?.items?.item;
   const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
   const holidays = items
@@ -68,8 +103,9 @@ export async function getPublicHolidays(year: number, month: number): Promise<Ho
       name: item.dateName || "공휴일"
     }));
 
-  memory.__companyCarHolidays.set(cacheKey, holidays);
-  return holidays;
+  const mergedHolidays = mergeHolidays(holidays, manualHolidays);
+  memory.__companyCarHolidays.set(cacheKey, mergedHolidays);
+  return mergedHolidays;
 }
 
 export async function getPublicHolidayDatesForRange(startYmd: string, endYmd: string) {
