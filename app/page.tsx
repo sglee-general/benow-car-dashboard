@@ -63,6 +63,12 @@ function yearsForMonth(month: Date) {
   return [...new Set([month.getFullYear(), new Date(month.getFullYear(), month.getMonth() - 1, 1).getFullYear()])];
 }
 
+function formatReservationTime(reservation: Reservation, ymd: string) {
+  const start = reservation.startDate === ymd ? reservation.startTime : `${reservation.startDate} ${reservation.startTime}`;
+  const end = reservation.endDate === ymd ? reservation.endTime : `${reservation.endDate} ${reservation.endTime}`;
+  return `${start}~${end}`;
+}
+
 export default function Home() {
   const [filter, setFilter] = useState<Filter>("all");
   const [month, setMonth] = useState(() => {
@@ -135,36 +141,17 @@ export default function Home() {
     return items.filter((reservation) => reservation.carId === filter);
   }
 
-  function isBooked(ymd: string, carId: CarId) {
-    return (reservationDates.get(ymd) || []).some((reservation) => reservation.carId === carId);
-  }
-
-  function isBlockedForCurrentFilter(ymd: string) {
-    if (filter === "all") return carOptions.every((car) => isBooked(ymd, car.id));
-    return isBooked(ymd, filter);
-  }
-
-  function firstAvailableCar(ymd: string): CarId | null {
-    if (filter !== "all") return isBooked(ymd, filter) ? null : filter;
-    return carOptions.find((car) => !isBooked(ymd, car.id))?.id || null;
-  }
-
   function openDate(ymd: string) {
     if (!canReserveDate(ymd, new Date(), holidayDates)) {
       setToast("예약이 가능한 시간이 아닙니다.");
       return;
     }
 
-    const availableCar = firstAvailableCar(ymd);
-    if (!availableCar) {
-      setToast("이미 예약이 완료된 날짜입니다.");
-      return;
-    }
-
+    const defaultCar = filter === "ray" ? "ray" : "grandeur";
     setSelectedDate(ymd);
     setForm((current) => ({
       ...current,
-      carId: availableCar,
+      carId: defaultCar,
       startDate: ymd,
       endDate: ymd,
       agreements: emptyAgreements
@@ -233,7 +220,7 @@ export default function Home() {
           const ymd = formatYmd(date);
           const outside = date.getMonth() !== month.getMonth();
           const visibleReservations = getVisibleReservations(ymd);
-          const blocked = isBlockedForCurrentFilter(ymd);
+          const hasReservations = visibleReservations.length > 0;
           const closed = !canReserveDate(ymd, new Date(), holidayDates);
           const restricted = isRestrictedBookingDate(ymd, holidayDates);
           const holidayName = holidayMap.get(ymd);
@@ -242,9 +229,8 @@ export default function Home() {
             <button
               type="button"
               key={ymd}
-              className={`day ${outside ? "outside" : ""} ${blocked ? "booked" : ""} ${closed ? "closed" : ""}`}
+              className={`day ${outside ? "outside" : ""} ${hasReservations ? "booked" : ""} ${closed ? "closed" : ""}`}
               onClick={() => openDate(ymd)}
-              disabled={blocked}
             >
               <span className="date-row">
                 <span className={`date-number ${isWeekendYmd(ymd) || holidayName ? "holiday" : ""}`}>{date.getDate()}</span>
@@ -253,7 +239,7 @@ export default function Home() {
               <span className="badges">
                 {visibleReservations.map((reservation) => (
                   <span className={`badge ${reservation.carId}`} key={`${reservation.id}-${ymd}`}>
-                    {reservation.carName} · {reservation.bookerName} / {reservation.department}
+                    {reservation.carName} · {formatReservationTime(reservation, ymd)} · {reservation.bookerName} / {reservation.department}
                   </span>
                 ))}
                 {closed && <span className="badge closed-badge">예약 가능 시간 아님</span>}
@@ -290,7 +276,7 @@ export default function Home() {
               차량
               <select value={form.carId} onChange={(event) => setForm({ ...form, carId: event.target.value as CarId })}>
                 {carOptions.map((car) => (
-                  <option key={car.id} value={car.id} disabled={isBooked(form.startDate, car.id)}>
+                  <option key={car.id} value={car.id}>
                     {car.name}
                   </option>
                 ))}

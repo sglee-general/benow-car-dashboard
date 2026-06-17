@@ -29,7 +29,6 @@ const listKey = `${namespace}:reservation-ids`;
 
 const memory = globalThis as typeof globalThis & {
   __companyCarReservations?: Map<string, Reservation>;
-  __companyCarSlots?: Map<string, string>;
 };
 
 function redisConfig() {
@@ -58,25 +57,54 @@ async function redisCommand<T>(command: unknown[]) {
   return data.result;
 }
 
-function slotKey(carId: CarId, date: string) {
-  return `${namespace}:slot:${carId}:${date}`;
-}
-
 function reservationKey(id: string) {
   return `${namespace}:reservation:${id}`;
 }
 
+function lockKey(carId: CarId, date: string) {
+  return `${namespace}:lock:${carId}:${date}`;
+}
+
 function getMemoryReservations() {
   memory.__companyCarReservations ??= new Map();
-  memory.__companyCarSlots ??= new Map();
-  return {
-    reservations: memory.__companyCarReservations,
-    slots: memory.__companyCarSlots
-  };
+  return memory.__companyCarReservations;
 }
 
 function compareReservations(a: Reservation, b: Reservation) {
   return `${a.startDate}${a.startTime}`.localeCompare(`${b.startDate}${b.startTime}`);
+}
+
+function reservationStart(reservation: Pick<Reservation, "startDate" | "startTime">) {
+  return `${reservation.startDate}T${reservation.startTime}`;
+}
+
+function reservationEnd(reservation: Pick<Reservation, "endDate" | "endTime">) {
+  return `${reservation.endDate}T${reservation.endTime}`;
+}
+
+function findOverlappingReservation(
+  reservations: Reservation[],
+  input: Pick<Reservation, "carId" | "startDate" | "startTime" | "endDate" | "endTime">
+) {
+  const inputStart = `${input.startDate}T${input.startTime}`;
+  const inputEnd = `${input.endDate}T${input.endTime}`;
+
+  return reservations.find((reservation) => {
+    if (reservation.carId !== input.carId) return false;
+    return inputStart < reservationEnd(reservation) && inputEnd > reservationStart(reservation);
+  });
+}
+
+function assertNoOverlap(
+  reservations: Reservation[],
+  input: Pick<Reservation, "carId" | "startDate" | "startTime" | "endDate" | "endTime">
+) {
+  const overlap = findOverlappingReservation(reservations, input);
+  if (!overlap) return;
+
+  throw new Error(
+    `${overlap.carName}은 ${overlap.startDate} ${overlap.startTime} ~ ${overlap.endDate} ${overlap.endTime}에 이미 예약되어 있습니다.`
+  );
 }
 
 export function getCarName(carId: CarId) {
@@ -98,7 +126,7 @@ export async function getReservations() {
       .sort(compareReservations);
   }
 
-  return [...getMemoryReservations().reservations.values()].sort(compareReservations);
+  return [...getMemoryReservations().values()].sort(compareReservations);
 }
 
 export async function createReservation(input: Omit<Reservation, "id" | "createdAt" | "carName">) {
@@ -119,29 +147,27 @@ export async function createReservation(input: Omit<Reservation, "id" | "created
   const config = redisConfig();
   if (!config) {
     const store = getMemoryReservations();
-    for (const date of dates) {
-      if (store.slots.has(slotKey(input.carId, date))) {
-        throw new Error(`${date}은 이미 예약이 완료된 날짜입니다.`);
-      }
-    }
-    for (const date of dates) store.slots.set(slotKey(input.carId, date), id);
-    store.reservations.set(id, reservation);
+    assertNoOverlap([...store.values()], input);
+    store.set(id, reservation);
     return reservation;
   }
 
-  const lockedSlots: string[] = [];
+  const lockValue = crypto.randomUUID();
+  const lockKeys: string[] = [];
+
   try {
     for (const date of dates) {
-      const key = slotKey(input.carId, date);
-      const result = await redisCommand<"OK" | null>(["SET", key, id, "NX"]);
-      if (result !== "OK") throw new Error(`${date}은 이미 예약이 완료된 날짜입니다.`);
-      lockedSlots.push(key);
+      const key = lockKey(input.carId, date);
+      const result = await redisCommand<"OK" | null>(["SET", key, lockValue, "NX", "EX", 10]);
+      if (result !== "OK") throw new Error("다른 예약이 처리 중입니다. 잠시 후 다시 시도해 주세요.");
+      lockKeys.push(key);
     }
+
+    assertNoOverlap(await getReservations(), input);
     await redisCommand(["SET", reservationKey(id), JSON.stringify(reservation)]);
     await redisCommand(["SADD", listKey, id]);
     return reservation;
-  } catch (error) {
-    await Promise.all(lockedSlots.map((key) => redisCommand(["DEL", key]).catch(() => undefined)));
-    throw error;
+  } finally {
+    await Promise.all(lockKeys.map((key) => redisCommand(["DEL", key]).catch(() => undefined)));
   }
 }

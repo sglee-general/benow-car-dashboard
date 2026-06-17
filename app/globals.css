@@ -151,7 +151,7 @@ h2 {
 }
 
 .day {
-  min-height: 132px;
+  min-height: 142px;
   padding: 10px;
   border: 0;
   border-top: 1px solid var(--line);
@@ -228,8 +228,9 @@ h2 {
   display: block;
   min-width: 0;
   overflow: hidden;
+  line-height: 1.35;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   padding: 5px 7px;
   border-radius: 6px;
   color: #fff;
